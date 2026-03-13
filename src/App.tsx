@@ -5,6 +5,21 @@ import { normalizeBodyHtml, stripHtmlText } from "./utils/html";
 type Section = {
   id: string;
   label: string;
+  builtin?: boolean;
+};
+
+type CustomSection = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  createdAt: number;
+};
+
+type SectionApi = {
+  list: () => Promise<CustomSection[]>;
+  create: (payload: { label: string }) => Promise<CustomSection>;
+  update: (payload: { id: string; label?: string; sortOrder?: number }) => Promise<CustomSection>;
+  delete: (id: string) => Promise<void>;
 };
 
 type Note = {
@@ -32,11 +47,10 @@ type NoteApi = {
   storagePath: () => Promise<string>;
 };
 
-const sections: Section[] = [
-  { id: "all", label: "全部笔记" },
-  { id: "today", label: "今天" },
-  { id: "important", label: "重要" },
-  { id: "archive", label: "归档" },
+const builtinSections: Section[] = [
+  { id: "all", label: "全部笔记", builtin: true },
+  { id: "today", label: "今天", builtin: true },
+  { id: "important", label: "重要", builtin: true },
 ];
 
 const fallbackNotes: Note[] = [];
@@ -107,6 +121,35 @@ function formatUpdatedAt(timestamp: number) {
     month: "numeric",
     day: "numeric",
   });
+}
+
+function createFallbackSectionApi(): SectionApi {
+  let data: CustomSection[] = [];
+  return {
+    list: async () => [...data],
+    create: async (payload) => {
+      const section: CustomSection = {
+        id: `section-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label: payload.label || "新分类",
+        sortOrder: data.length,
+        createdAt: Date.now(),
+      };
+      data = [...data, section];
+      return section;
+    },
+    update: async (payload) => {
+      const idx = data.findIndex((s) => s.id === payload.id);
+      if (idx === -1) throw new Error("分类不存在");
+      const updated = { ...data[idx] };
+      if (payload.label) updated.label = payload.label;
+      if (payload.sortOrder !== undefined) updated.sortOrder = payload.sortOrder;
+      data = data.map((s) => (s.id === updated.id ? updated : s));
+      return updated;
+    },
+    delete: async (id) => {
+      data = data.filter((s) => s.id !== id);
+    },
+  };
 }
 
 function createFallbackApi(): NoteApi {
@@ -180,6 +223,9 @@ function App() {
   const noteApiRef = useRef<NoteApi>(
     window.notepad?.notes ?? createFallbackApi(),
   );
+  const sectionApiRef = useRef<SectionApi>(
+    window.notepad?.sections ?? createFallbackSectionApi(),
+  );
 
   const [activeSectionId, setActiveSectionId] = useState("all");
   const [notes, setNotes] = useState<Note[]>([]);
@@ -190,15 +236,19 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [storagePath, setStoragePath] = useState("读取中...");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
 
   useEffect(() => {
     let isDisposed = false;
 
     const loadNotes = async () => {
       try {
-        const [initialNotes, path] = await Promise.all([
+        const [initialNotes, path, initialSections] = await Promise.all([
           noteApiRef.current.list(),
           noteApiRef.current.storagePath(),
+          sectionApiRef.current.list(),
         ]);
 
         if (isDisposed) {
@@ -215,6 +265,7 @@ function App() {
         setNotes(normalized);
         setActiveNoteId(normalized[0]?.id ?? null);
         setStoragePath(path);
+        setCustomSections(initialSections);
       } catch (error) {
         if (!isDisposed) {
           console.error(error);
@@ -239,27 +290,34 @@ function App() {
       all: notes.length,
       today: 0,
       important: 0,
-      archive: 0,
     };
 
+    for (const section of customSections) {
+      counts[section.id] = 0;
+    }
+
+    const now = new Date();
+    const todayYear = now.getFullYear();
+    const todayMonth = now.getMonth();
+    const todayDate = now.getDate();
+
     for (const note of notes) {
-      // 今天：按创建日期
-      const createdAtDate = new Date(note.createdAt);
-      const now = new Date();
+      const d = new Date(note.createdAt);
       if (
-        createdAtDate.getFullYear() === now.getFullYear() &&
-        createdAtDate.getMonth() === now.getMonth() &&
-        createdAtDate.getDate() === now.getDate()
+        d.getFullYear() === todayYear &&
+        d.getMonth() === todayMonth &&
+        d.getDate() === todayDate
       ) {
         counts.today += 1;
       }
-      // 重要、归档：按 sectionId
       if (note.sectionId === "important") counts.important += 1;
-      if (note.sectionId === "archive") counts.archive += 1;
+      if (note.sectionId in counts && note.sectionId !== "all" && note.sectionId !== "today" && note.sectionId !== "important") {
+        counts[note.sectionId] += 1;
+      }
     }
 
     return counts;
-  }, [notes]);
+  }, [notes, customSections]);
 
   const filteredNotes = useMemo(() => {
     let list = notes;
@@ -406,6 +464,49 @@ function App() {
     }
   };
 
+  const handleAddSection = async () => {
+    try {
+      const created = await sectionApiRef.current.create({ label: "新分类" });
+      setCustomSections((prev) => [...prev, created]);
+      setEditingSectionId(created.id);
+      setEditingLabel(created.label);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleRenameSection = async (id: string) => {
+    const label = editingLabel.trim();
+    if (!label) {
+      setEditingSectionId(null);
+      return;
+    }
+    try {
+      const updated = await sectionApiRef.current.update({ id, label });
+      setCustomSections((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, label: updated.label } : s)),
+      );
+    } catch (error) {
+      console.error(error);
+    }
+    setEditingSectionId(null);
+  };
+
+  const handleDeleteSection = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm("删除分类后，该分类下的笔记将移至「全部笔记」，确定删除？")) return;
+    try {
+      await sectionApiRef.current.delete(id);
+      setCustomSections((prev) => prev.filter((s) => s.id !== id));
+      setNotes((prev) =>
+        prev.map((n) => (n.sectionId === id ? { ...n, sectionId: "all" } : n)),
+      );
+      if (activeSectionId === id) setActiveSectionId("all");
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const handleToggleImportant = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const note = notes.find((n) => n.id === id);
@@ -441,7 +542,7 @@ function App() {
         </header>
 
         <nav className="window-no-drag space-y-1">
-          {sections.map((section) => {
+          {builtinSections.map((section) => {
             const isActive = section.id === activeSectionId;
 
             return (
@@ -469,6 +570,94 @@ function App() {
             );
           })}
         </nav>
+
+        <div className="mt-3 flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between px-3 mb-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              自定义分类
+            </span>
+            <button
+              type="button"
+              onClick={handleAddSection}
+              className="window-no-drag rounded-md p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
+              title="新建分类"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
+          <div className="window-no-drag space-y-1 overflow-y-auto min-h-0 flex-1">
+            {customSections.map((section) => {
+              const isActive = section.id === activeSectionId;
+              const isEditing = editingSectionId === section.id;
+
+              if (isEditing) {
+                return (
+                  <div key={section.id} className="px-1">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingLabel}
+                      onChange={(e) => setEditingLabel(e.target.value)}
+                      onBlur={() => handleRenameSection(section.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRenameSection(section.id);
+                        if (e.key === "Escape") setEditingSectionId(null);
+                      }}
+                      className="w-full rounded-xl border border-macBlue/40 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none ring-2 ring-macBlue/20"
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveSectionId(section.id)}
+                  onDoubleClick={() => {
+                    setEditingSectionId(section.id);
+                    setEditingLabel(section.label);
+                  }}
+                  className={`group flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium transition-all duration-200 ${
+                    isActive
+                      ? "bg-macBlue text-white"
+                      : "text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                  <div className="flex items-center gap-1">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
+                        isActive
+                          ? "bg-white/30 text-white"
+                          : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
+                      }`}
+                    >
+                      {sectionCounts[section.id] ?? 0}
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => handleDeleteSection(section.id, e)}
+                      className={`rounded-md p-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${
+                        isActive
+                          ? "text-white/70 hover:text-white"
+                          : "text-slate-400 hover:text-slate-600"
+                      }`}
+                      title="删除分类"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <div
           className="mt-auto border-t py-3 relative"
