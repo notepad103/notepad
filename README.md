@@ -2,6 +2,9 @@
 
 一款面向 macOS 的轻量级本地笔记应用，使用 Electron + React + Tailwind CSS 构建，数据通过 SQLite 持久化存储在本地。
 
+<!-- 在这里添加你的应用截图 -->
+<!-- ![截图](./screenshot.png) -->
+
 ## 功能特性
 
 - **富文本编辑** — 基于 Tiptap 的所见即所得编辑器，支持标题、列表、引用、图片等
@@ -33,10 +36,9 @@ notepad/
 │   ├── main.tsx         # React 入口
 │   ├── App.tsx          # 应用主组件（侧边栏、笔记列表、编辑器）
 │   ├── index.css        # 全局样式
-│   ├── vite-env.d.ts    # 类型声明
 │   ├── components/
-│   │   ├── TiptapEditor.tsx    # Tiptap 富文本编辑器组件
-│   │   └── WysiwygEditor.tsx   # 编辑器备选实现
+│   │   ├── TiptapEditor.tsx
+│   │   └── WysiwygEditor.tsx
 │   └── utils/
 │       └── html.ts      # HTML 处理工具函数
 └── package.json
@@ -69,9 +71,18 @@ npm run dev
 # 仅构建前端资源
 npm run build
 
-# 打包为 macOS 应用（输出到 release/ 目录）
+# 快速打包（生成目录，用于测试）
+npm run pack
+
+# 完整打包（生成 .dmg / .zip 安装包）
 npm run dist
 ```
+
+输出目录为 `release/`。
+
+## 参与贡献
+
+欢迎贡献代码！请随时提交 [Issue](https://github.com/notepad103/notepad/issues) 或 Pull Request。
 
 ## 许可证
 
