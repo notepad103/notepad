@@ -8,7 +8,7 @@
 ## 功能特性
 
 - **富文本编辑** — 基于 Tiptap 的所见即所得编辑器，支持标题、列表、引用、图片等
-- **分类管理** — 全部笔记、今天、重要、归档四个内置分类
+- **分类管理** — 全部笔记、今天、重要三个内置分类；支持自定义分类（侧边栏内新建、重命名、删除）
 - **快速搜索** — 按标题和正文内容实时筛选笔记
 - **自动保存** — 编辑后自动延迟保存到本地 SQLite 数据库
 - **macOS 原生风格** — 无边框透明窗口、圆角毛玻璃侧边栏、系统红绿灯按钮
@@ -30,14 +30,17 @@
 ```
 notepad/
 ├── electron/
-│   ├── main.js          # Electron 主进程（窗口管理、数据库、IPC）
-│   └── preload.js       # 预加载脚本，暴露 notepad API 到渲染进程
+│   ├── main.js          # Electron 主进程（窗口管理、IPC）
+│   ├── preload.js       # 预加载脚本，暴露 notepad API 到渲染进程
+│   └── database.js     # SQLite 数据库（笔记、自定义分类）
 ├── src/
 │   ├── main.tsx         # React 入口
-│   ├── App.tsx          # 应用主组件（侧边栏、笔记列表、编辑器）
+│   ├── App.tsx          # 应用主组件（笔记列表、编辑器、状态与 API 桥接）
 │   ├── index.css        # 全局样式
 │   ├── components/
-│   │   ├── TiptapEditor.tsx
+│   │   ├── Sidebar.tsx      # 侧边栏（内置分类 + 自定义分类的加载与增删改）
+│   │   ├── NoteList.tsx     # 笔记列表与搜索、移动分类
+│   │   ├── TiptapEditor.tsx # 富文本编辑器
 │   │   └── WysiwygEditor.tsx
 │   └── utils/
 │       └── html.ts      # HTML 处理工具函数
