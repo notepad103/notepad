@@ -26,16 +26,19 @@
   "build": {
     "appId": "com.notepad.app",
     "productName": "Notepad",
+    "icon": "icon.png",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**",
       "electron/**",
-      "package.json"
+      "package.json",
+      "icon.png"
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "icon.png",
       "target": [
         "dmg",
         "zip"
