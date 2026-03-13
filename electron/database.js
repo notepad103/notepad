@@ -1,8 +1,11 @@
-const { execFileSync } = require('node:child_process');
+const Database = require('better-sqlite3');
 
+let db = null;
 let databasePath = '';
 
-const defaultNotes = [];
+// ---------------------------------------------------------------------------
+// HTML helpers
+// ---------------------------------------------------------------------------
 
 function escapeHtml(value) {
   return String(value)
@@ -43,18 +46,6 @@ function stripHtml(value) {
     .replace(/&quot;/gi, '"');
 }
 
-function quoteText(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
-function toSqlNumber(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(Math.trunc(value));
-  }
-
-  return String(Date.now());
-}
-
 function deriveTitle(body, fallback = '未命名笔记') {
   const firstLine = stripHtml(body)
     .split(/\r?\n/)
@@ -79,44 +70,6 @@ function derivePreview(body) {
 }
 
 // ---------------------------------------------------------------------------
-// SQLite helpers
-// ---------------------------------------------------------------------------
-
-function runSql(sql, { json = false } = {}) {
-  if (!databasePath) {
-    throw new Error('SQLite 数据库尚未初始化。');
-  }
-
-  const args = [];
-
-  if (json) {
-    args.push('-json');
-  }
-
-  args.push(databasePath, sql);
-
-  try {
-    return execFileSync('sqlite3', args, {
-      encoding: 'utf8',
-      maxBuffer: 8 * 1024 * 1024
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`执行 SQLite 命令失败: ${message}`);
-  }
-}
-
-function queryRows(sql) {
-  const output = runSql(sql, { json: true }).trim();
-
-  if (!output) {
-    return [];
-  }
-
-  return JSON.parse(output);
-}
-
-// ---------------------------------------------------------------------------
 // Notes
 // ---------------------------------------------------------------------------
 
@@ -126,105 +79,52 @@ function mapNoteRow(row) {
     title: String(row.title),
     preview: String(row.preview),
     body: String(row.body),
-    sectionId: String(row.sectionId),
-    createdAt: Number(row.createdAt) ?? Number(row.updatedAt) ?? Date.now(),
-    updatedAt: Number(row.updatedAt) || Date.now()
+    sectionId: String(row.section_id),
+    isImportant: Boolean(row.is_important),
+    createdAt: Number(row.created_at) || Number(row.updated_at) || Date.now(),
+    updatedAt: Number(row.updated_at) || Date.now()
   };
 }
 
 function listNotes() {
-  const rows = queryRows(`
-    SELECT
-      id,
-      title,
-      preview,
-      body,
-      section_id AS sectionId,
-      created_at AS createdAt,
-      updated_at AS updatedAt
-    FROM notes
-    ORDER BY updated_at DESC;
-  `);
-
+  const rows = db.prepare('SELECT * FROM notes ORDER BY updated_at DESC').all();
   return rows.map(mapNoteRow);
 }
 
 function getNoteById(noteId) {
-  const safeNoteId = quoteText(noteId);
-  const rows = queryRows(`
-    SELECT
-      id,
-      title,
-      preview,
-      body,
-      section_id AS sectionId,
-      created_at AS createdAt,
-      updated_at AS updatedAt
-    FROM notes
-    WHERE id = ${safeNoteId}
-    LIMIT 1;
-  `);
-
-  if (rows.length === 0) {
-    return null;
-  }
-
-  return mapNoteRow(rows[0]);
+  const row = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  return row ? mapNoteRow(row) : null;
 }
 
 function createNote(payload = {}) {
   const safePayload = payload && typeof payload === 'object' ? payload : {};
   const sectionId =
-    typeof safePayload.sectionId === 'string' && safePayload.sectionId.trim() ? safePayload.sectionId.trim() : 'all';
+    typeof safePayload.sectionId === 'string' && safePayload.sectionId.trim()
+      ? safePayload.sectionId.trim()
+      : 'all';
   const body = '<p><br></p>';
   const title = '新建笔记';
   const preview = derivePreview(body);
-  const createdAt = Date.now();
-  const updatedAt = createdAt;
-  const noteId = `note-${updatedAt}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = Date.now();
+  const noteId = `note-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
-  runSql(`
-    INSERT INTO notes (
-      id,
-      title,
-      preview,
-      body,
-      section_id,
-      created_at,
-      updated_at
-    ) VALUES (
-      ${quoteText(noteId)},
-      ${quoteText(title)},
-      ${quoteText(preview)},
-      ${quoteText(body)},
-      ${quoteText(sectionId)},
-      ${toSqlNumber(createdAt)},
-      ${toSqlNumber(updatedAt)}
-    );
-  `);
+  db.prepare(`
+    INSERT INTO notes (id, title, preview, body, section_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(noteId, title, preview, body, sectionId, now, now);
 
   const created = getNoteById(noteId);
-
-  if (!created) {
-    throw new Error('创建笔记后未读取到结果。');
-  }
-
+  if (!created) throw new Error('创建笔记后未读取到结果。');
   return created;
 }
 
 function updateNote(payload = {}) {
   const safePayload = payload && typeof payload === 'object' ? payload : {};
   const noteId = typeof safePayload.id === 'string' ? safePayload.id.trim() : '';
-
-  if (!noteId) {
-    throw new Error('更新笔记时必须提供有效的 id。');
-  }
+  if (!noteId) throw new Error('更新笔记时必须提供有效的 id。');
 
   const existing = getNoteById(noteId);
-
-  if (!existing) {
-    throw new Error(`未找到 id 为 ${noteId} 的笔记。`);
-  }
+  if (!existing) throw new Error(`未找到 id 为 ${noteId} 的笔记。`);
 
   const rawBody = typeof safePayload.body === 'string' ? safePayload.body : existing.body;
   const nextBody = ensureHtmlDocument(rawBody);
@@ -236,32 +136,25 @@ function updateNote(payload = {}) {
     typeof safePayload.title === 'string' && safePayload.title.trim()
       ? safePayload.title.trim()
       : deriveTitle(nextBody, existing.title);
+  const nextIsImportant =
+    typeof safePayload.isImportant === 'boolean'
+      ? (safePayload.isImportant ? 1 : 0)
+      : (existing.isImportant ? 1 : 0);
   const nextPreview = derivePreview(nextBody);
   const updatedAt = Date.now();
 
-  runSql(`
-    UPDATE notes
-    SET
-      title = ${quoteText(nextTitle)},
-      preview = ${quoteText(nextPreview)},
-      body = ${quoteText(nextBody)},
-      section_id = ${quoteText(nextSectionId)},
-      updated_at = ${toSqlNumber(updatedAt)}
-    WHERE id = ${quoteText(noteId)};
-  `);
+  db.prepare(`
+    UPDATE notes SET title = ?, preview = ?, body = ?, section_id = ?, is_important = ?, updated_at = ?
+    WHERE id = ?
+  `).run(nextTitle, nextPreview, nextBody, nextSectionId, nextIsImportant, updatedAt, noteId);
 
   const updated = getNoteById(noteId);
-
-  if (!updated) {
-    throw new Error('更新笔记后未读取到结果。');
-  }
-
+  if (!updated) throw new Error('更新笔记后未读取到结果。');
   return updated;
 }
 
 function deleteNote(noteId) {
-  const safeNoteId = quoteText(noteId);
-  runSql(`DELETE FROM notes WHERE id = ${safeNoteId};`);
+  db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
 }
 
 // ---------------------------------------------------------------------------
@@ -272,17 +165,13 @@ function mapSectionRow(row) {
   return {
     id: String(row.id),
     label: String(row.label),
-    sortOrder: Number(row.sortOrder) || 0,
-    createdAt: Number(row.createdAt) || Date.now(),
+    sortOrder: Number(row.sort_order) || 0,
+    createdAt: Number(row.created_at) || Date.now(),
   };
 }
 
 function listSections() {
-  const rows = queryRows(`
-    SELECT id, label, sort_order AS sortOrder, created_at AS createdAt
-    FROM sections
-    ORDER BY sort_order ASC, created_at ASC;
-  `);
+  const rows = db.prepare('SELECT * FROM sections ORDER BY sort_order ASC, created_at ASC').all();
   return rows.map(mapSectionRow);
 }
 
@@ -293,19 +182,14 @@ function createSection(payload = {}) {
     : '新分类';
   const now = Date.now();
   const id = `section-${now}-${Math.random().toString(36).slice(2, 8)}`;
-  const maxRows = queryRows('SELECT MAX(sort_order) AS maxOrder FROM sections;');
-  const sortOrder = (Number(maxRows[0]?.maxOrder) || 0) + 1;
 
-  runSql(`
-    INSERT INTO sections (id, label, sort_order, created_at)
-    VALUES (${quoteText(id)}, ${quoteText(label)}, ${toSqlNumber(sortOrder)}, ${toSqlNumber(now)});
-  `);
+  const maxRow = db.prepare('SELECT MAX(sort_order) AS max_order FROM sections').get();
+  const sortOrder = (Number(maxRow?.max_order) || 0) + 1;
 
-  const rows = queryRows(`
-    SELECT id, label, sort_order AS sortOrder, created_at AS createdAt
-    FROM sections WHERE id = ${quoteText(id)};
-  `);
-  return mapSectionRow(rows[0]);
+  db.prepare('INSERT INTO sections (id, label, sort_order, created_at) VALUES (?, ?, ?, ?)').run(id, label, sortOrder, now);
+
+  const row = db.prepare('SELECT * FROM sections WHERE id = ?').get(id);
+  return mapSectionRow(row);
 }
 
 function updateSection(payload = {}) {
@@ -314,39 +198,47 @@ function updateSection(payload = {}) {
   if (!id) throw new Error('更新分类时必须提供有效的 id。');
 
   const sets = [];
+  const params = [];
+
   if (typeof safePayload.label === 'string' && safePayload.label.trim()) {
-    sets.push(`label = ${quoteText(safePayload.label.trim())}`);
+    sets.push('label = ?');
+    params.push(safePayload.label.trim());
   }
   if (typeof safePayload.sortOrder === 'number' && Number.isFinite(safePayload.sortOrder)) {
-    sets.push(`sort_order = ${toSqlNumber(safePayload.sortOrder)}`);
+    sets.push('sort_order = ?');
+    params.push(Math.trunc(safePayload.sortOrder));
   }
   if (sets.length === 0) throw new Error('没有需要更新的字段。');
 
-  runSql(`UPDATE sections SET ${sets.join(', ')} WHERE id = ${quoteText(id)};`);
+  params.push(id);
+  db.prepare(`UPDATE sections SET ${sets.join(', ')} WHERE id = ?`).run(...params);
 
-  const rows = queryRows(`
-    SELECT id, label, sort_order AS sortOrder, created_at AS createdAt
-    FROM sections WHERE id = ${quoteText(id)};
-  `);
-  if (rows.length === 0) throw new Error(`未找到 id 为 ${id} 的分类。`);
-  return mapSectionRow(rows[0]);
+  const row = db.prepare('SELECT * FROM sections WHERE id = ?').get(id);
+  if (!row) throw new Error(`未找到 id 为 ${id} 的分类。`);
+  return mapSectionRow(row);
 }
 
 function deleteSection(sectionId) {
-  runSql(`UPDATE notes SET section_id = 'all' WHERE section_id = ${quoteText(sectionId)};`);
-  runSql(`DELETE FROM sections WHERE id = ${quoteText(sectionId)};`);
+  const migrate = db.transaction(() => {
+    db.prepare("UPDATE notes SET section_id = 'all' WHERE section_id = ?").run(sectionId);
+    db.prepare('DELETE FROM sections WHERE id = ?').run(sectionId);
+  });
+  migrate();
 }
 
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
+const defaultNotes = [];
+
 function initialize(dbPath) {
   databasePath = dbPath;
+  db = new Database(dbPath);
 
-  runSql(`
-    PRAGMA journal_mode = WAL;
+  db.pragma('journal_mode = WAL');
 
+  db.exec(`
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -367,56 +259,40 @@ function initialize(dbPath) {
     );
   `);
 
-  try {
-    runSql('ALTER TABLE notes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;');
-    runSql('UPDATE notes SET created_at = updated_at WHERE created_at = 0;');
-  } catch (_) {
-    /* 列已存在，跳过迁移 */
+  const columns = db.prepare("PRAGMA table_info(notes)").all().map((c) => c.name);
+  if (!columns.includes('created_at')) {
+    db.exec('ALTER TABLE notes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;');
+    db.exec('UPDATE notes SET created_at = updated_at WHERE created_at = 0;');
+  }
+  if (!columns.includes('is_important')) {
+    db.exec('ALTER TABLE notes ADD COLUMN is_important INTEGER NOT NULL DEFAULT 0;');
+    db.exec("UPDATE notes SET is_important = 1, section_id = 'all' WHERE section_id = 'important';");
   }
 
-  const countRows = queryRows('SELECT COUNT(1) AS total FROM notes;');
-  const total = Number(countRows[0]?.total ?? 0);
+  const { total } = db.prepare('SELECT COUNT(1) AS total FROM notes').get();
 
   if (total > 0) {
     return;
   }
 
-  const seedStatements = defaultNotes
-    .map((note) => {
-      const title = note.title;
+  if (defaultNotes.length === 0) {
+    return;
+  }
+
+  const insertNote = db.prepare(`
+    INSERT INTO notes (id, title, preview, body, section_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const seed = db.transaction(() => {
+    for (const note of defaultNotes) {
       const body = ensureHtmlDocument(note.body);
       const preview = derivePreview(body);
-
       const createdAt = note.createdAt ?? note.updatedAt;
-      return `
-        INSERT INTO notes (
-          id,
-          title,
-          preview,
-          body,
-          section_id,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${quoteText(note.id)},
-          ${quoteText(title)},
-          ${quoteText(preview)},
-          ${quoteText(body)},
-          ${quoteText(note.sectionId)},
-          ${toSqlNumber(createdAt)},
-          ${toSqlNumber(note.updatedAt)}
-        );
-      `;
-    })
-    .join('\n');
-
-  if (seedStatements.trim()) {
-    runSql(`
-      BEGIN TRANSACTION;
-      ${seedStatements}
-      COMMIT;
-    `);
-  }
+      insertNote.run(note.id, note.title, preview, body, note.sectionId, createdAt, note.updatedAt);
+    }
+  });
+  seed();
 }
 
 function getDatabasePath() {
