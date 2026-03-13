@@ -86,6 +86,23 @@ function markdownTextToHtml(value: string) {
   return blocks.join("");
 }
 
+export type HeadingItem = { level: 1 | 2 | 3; text: string };
+
+/** 从 HTML 中解析 h1/h2/h3 作为目录项（保持顺序） */
+export function parseHeadings(html: string): HeadingItem[] {
+  if (!html?.trim()) return [];
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  const headings: HeadingItem[] = [];
+  const nodes = div.querySelectorAll("h1, h2, h3");
+  nodes.forEach((el) => {
+    const level = parseInt(el.tagName.slice(1), 10) as 1 | 2 | 3;
+    const text = (el.textContent ?? "").trim();
+    if (text) headings.push({ level, text });
+  });
+  return headings;
+}
+
 export function normalizeBodyHtml(value: string) {
   const content = String(value ?? "").trim();
 
