@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { NoteList } from "./components/NoteList";
 import { Sidebar, type CustomSection } from "./components/Sidebar";
 import { TiptapEditor } from "./components/TiptapEditor";
-import { normalizeBodyHtml, stripHtmlText } from "./utils/html";
+import { normalizeBodyHtml, parseHeadings, stripHtmlText } from "./utils/html";
+import { TableOfContents } from "./components/TableOfContents";
 
 type SectionApi = {
   list: () => Promise<CustomSection[]>;
@@ -171,8 +172,11 @@ function createFallbackApi(): NoteApi {
   };
 }
 
+const TOC_WIDTH = 180;
+
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const editorSectionRef = useRef<HTMLElement>(null);
   const noteApiRef = useRef<NoteApi>(
     window.notepad?.notes ?? createFallbackApi(),
   );
@@ -232,6 +236,8 @@ function App() {
       isDisposed = true;
     };
   }, []);
+
+  const tocHeadings = useMemo(() => parseHeadings(editorHtml), [editorHtml]);
 
   const sectionCounts = useMemo(() => {
     const counts: Record<string, number> = {
@@ -512,7 +518,10 @@ function App() {
           </div>
         </div>
 
-        <div className="grid h-[calc(100%-70px)] grid-cols-[300px_1fr] pr-[6px]">
+        <div
+          className="grid h-[calc(100%-70px)] pr-[6px]"
+          style={{ gridTemplateColumns: `300px 1fr ${TOC_WIDTH}px` }}
+        >
           <NoteList
             sectionFilteredNotes={sectionFilteredNotes}
             onFilteredNotesChange={setFilteredNotes}
@@ -525,7 +534,10 @@ function App() {
             isLoading={isLoading}
           />
 
-          <section className="flex min-h-0 flex-col">
+          <section
+            ref={editorSectionRef}
+            className="flex min-h-0 flex-col"
+          >
             <div className="min-h-0 flex-1">
               <TiptapEditor
                 className="h-full"
@@ -539,6 +551,12 @@ function App() {
               />
             </div>
           </section>
+
+          <TableOfContents
+            headings={tocHeadings}
+            editorContainerRef={editorSectionRef}
+            className="self-stretch"
+          />
         </div>
       </main>
     </div>
