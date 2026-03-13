@@ -73,6 +73,12 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  if (isMac) {
+    const iconPath = path.join(__dirname, '..', 'icon.png');
+    try {
+      app.dock.setIcon(iconPath);
+    } catch (_) {}
+  }
   db.initialize(path.join(app.getPath('userData'), 'notes.db'));
   registerIpcHandlers();
   createMainWindow();
