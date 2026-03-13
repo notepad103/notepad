@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { NoteList } from "./components/NoteList";
+import { Sidebar } from "./components/Sidebar";
 import { TiptapEditor } from "./components/TiptapEditor";
 import { normalizeBodyHtml, stripHtmlText } from "./utils/html";
-
-type Section = {
-  id: string;
-  label: string;
-  builtin?: boolean;
-};
 
 type CustomSection = {
   id: string;
@@ -49,12 +45,6 @@ type NoteApi = {
   storagePath: () => Promise<string>;
 };
 
-const builtinSections: Section[] = [
-  { id: "all", label: "全部笔记", builtin: true },
-  { id: "today", label: "今天", builtin: true },
-  { id: "important", label: "重要", builtin: true },
-];
-
 const fallbackNotes: Note[] = [];
 
 const SIDEBAR_WIDTH = 278;
@@ -85,44 +75,6 @@ function derivePreview(body: string) {
   }
 
   return plain.length > 52 ? `${plain.slice(0, 52)}...` : plain;
-}
-
-function formatUpdatedAt(timestamp: number) {
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const now = new Date();
-  const today = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).getTime();
-  const yesterday = today - 24 * 60 * 60 * 1000;
-  const noteDay = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  ).getTime();
-
-  if (noteDay === today) {
-    return date.toLocaleTimeString("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  }
-
-  if (noteDay === yesterday) {
-    return "昨天";
-  }
-
-  return date.toLocaleDateString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-  });
 }
 
 function createFallbackSectionApi(): SectionApi {
@@ -243,16 +195,10 @@ function App() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [isLoading, setIsLoading] = useState(true);
   const [storagePath, setStoragePath] = useState("读取中...");
-  const [searchKeyword, setSearchKeyword] = useState("");
   const [customSections, setCustomSections] = useState<CustomSection[]>([]);
+  const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
-  const [contextMenu, setContextMenu] = useState<{
-    noteId: string;
-    x: number;
-    y: number;
-  } | null>(null);
-
   useEffect(() => {
     let isDisposed = false;
 
@@ -332,7 +278,7 @@ function App() {
     return counts;
   }, [notes, customSections]);
 
-  const filteredNotes = useMemo(() => {
+  const sectionFilteredNotes = useMemo(() => {
     let list = notes;
     if (activeSectionId === "today") {
       const now = new Date();
@@ -349,19 +295,12 @@ function App() {
     } else if (activeSectionId !== "all") {
       list = list.filter((note) => note.sectionId === activeSectionId);
     }
+    return list;
+  }, [activeSectionId, notes]);
 
-    const keyword = searchKeyword.trim().toLowerCase();
-    if (!keyword) {
-      return list;
-    }
-    return list.filter((note) => {
-      const titleMatch = note.title.toLowerCase().includes(keyword);
-      const previewMatch = note.preview.toLowerCase().includes(keyword);
-      const bodyText = stripHtmlText(note.body).toLowerCase();
-      const bodyMatch = bodyText.includes(keyword);
-      return titleMatch || previewMatch || bodyMatch;
-    });
-  }, [activeSectionId, notes, searchKeyword]);
+  useEffect(() => {
+    setFilteredNotes(sectionFilteredNotes);
+  }, [sectionFilteredNotes]);
 
   // 当筛选结果变化（切换分类/搜索）时，默认选中并展示第一条
   useEffect(() => {
@@ -538,25 +477,7 @@ function App() {
     } catch (error) {
       console.error(error);
     }
-    setContextMenu(null);
   };
-
-  const handleNoteContextMenu = (noteId: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({ noteId, x: e.clientX, y: e.clientY });
-  };
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    window.addEventListener("click", close);
-    window.addEventListener("contextmenu", close);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("contextmenu", close);
-    };
-  }, [contextMenu]);
 
   const handleToggleImportant = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -585,174 +506,21 @@ function App() {
       ref={containerRef}
       className="relative h-screen w-screen overflow-hidden rounded-[32px] bg-white/[0.98] p-[6px] text-slate-900"
     >
-      <aside className="glass-sidebar window-no-drag absolute bottom-[6px] left-[6px] top-[6px] z-20 flex w-[278px] flex-col rounded-[28px] bg-gray-50/90 p-3">
-        <header className="window-drag-region mb-4 rounded-2xl px-2 pb-3 pt-8">
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
-            记事本
-          </h1>
-        </header>
-
-        <nav className="window-no-drag space-y-1">
-          {builtinSections.map((section) => {
-            const isActive = section.id === activeSectionId;
-
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => setActiveSectionId(section.id)}
-                className={`group flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium transition-all duration-200 ${
-                  isActive
-                    ? "bg-macBlue text-white"
-                    : "text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                }`}
-              >
-                <span>{section.label}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
-                    isActive
-                      ? "bg-white/30 text-white"
-                      : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
-                  }`}
-                >
-                  {sectionCounts[section.id] ?? 0}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="mt-3 flex-1 min-h-0 flex flex-col">
-          <div className="flex items-center justify-between px-3 mb-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              自定义分类
-            </span>
-            <button
-              type="button"
-              onClick={handleAddSection}
-              className="window-no-drag rounded-md p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
-              title="新建分类"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
-          </div>
-          <div className="window-no-drag space-y-1 overflow-y-auto min-h-0 flex-1">
-            {customSections.map((section) => {
-              const isActive = section.id === activeSectionId;
-              const isEditing = editingSectionId === section.id;
-
-              if (isEditing) {
-                return (
-                  <div key={section.id} className="px-1">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={editingLabel}
-                      onChange={(e) => setEditingLabel(e.target.value)}
-                      onBlur={() => handleRenameSection(section.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleRenameSection(section.id);
-                        if (e.key === "Escape") setEditingSectionId(null);
-                      }}
-                      className="w-full rounded-xl border border-macBlue/40 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none ring-2 ring-macBlue/20"
-                    />
-                  </div>
-                );
-              }
-
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setActiveSectionId(section.id)}
-                  onDoubleClick={() => {
-                    setEditingSectionId(section.id);
-                    setEditingLabel(section.label);
-                  }}
-                  className={`group flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? "bg-macBlue text-white"
-                      : "text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                  }`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{section.label}</span>
-                  <div className="flex items-center gap-1">
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => handleDeleteSection(section.id, e)}
-                      className={`rounded-md p-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${
-                        isActive
-                          ? "text-white/70 hover:text-white"
-                          : "text-slate-400 hover:text-slate-600"
-                      }`}
-                      title="删除分类"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
-                        isActive
-                          ? "bg-white/30 text-white"
-                          : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
-                      }`}
-                    >
-                      {sectionCounts[section.id] ?? 0}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div
-          className="mt-auto border-t py-3 relative"
-          style={{ boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.9)" }}
-        >
-          <p className="text-sm font-semibold text-slate-800">{saveHint}</p>
-          <div className="mt-1 flex items-center gap-1.5">
-            <p className="min-w-0 flex-1 truncate text-xs text-slate-500">
-              {storagePath}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(storagePath);
-                window.notepad?.showNotification?.({ body: "复制成功" });
-              }}
-              className="window-no-drag shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
-              title="复制路径"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect
-                  width="14"
-                  height="14"
-                  x="8"
-                  y="8"
-                  rx="2"
-                  ry="2"
-                />
-                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </aside>
+      <Sidebar
+        activeSectionId={activeSectionId}
+        onActiveSectionChange={setActiveSectionId}
+        sectionCounts={sectionCounts}
+        customSections={customSections}
+        editingSectionId={editingSectionId}
+        editingLabel={editingLabel}
+        onEditingSectionIdChange={setEditingSectionId}
+        onEditingLabelChange={setEditingLabel}
+        onAddSection={handleAddSection}
+        onRenameSection={handleRenameSection}
+        onDeleteSection={handleDeleteSection}
+        saveHint={saveHint}
+        storagePath={storagePath}
+      />
 
       <main
         className="window-no-drag absolute inset-y-0 right-0 z-10 overflow-hidden rounded-r-[32px] "
@@ -797,139 +565,17 @@ function App() {
         </div>
 
         <div className="grid h-[calc(100%-70px)] grid-cols-[300px_1fr] pr-[6px]">
-          <section className="flex min-h-0 flex-col rounded-xl bg-slate-50/90 p-4">
-            <div className="mb-3 rounded-xl bg-white p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                快速搜索
-              </p>
-              <input
-                type="text"
-                placeholder="输入关键字筛选笔记"
-                className="mt-2 w-full rounded-lg bg-slate-50 px-2.5 py-2 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:ring-2 focus:ring-macBlue/35"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-              />
-            </div>
-            <div className="notes-list-scroll min-h-0 flex-1 space-y-2 overflow-y-auto">
-              {filteredNotes.map((note) => {
-                const isSelected = note.id === activeNoteId;
-
-                return (
-                  <div
-                    key={note.id}
-                    className="relative group"
-                    onContextMenu={(e) => handleNoteContextMenu(note.id, e)}
-                  >
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        setActiveNoteId(note.id);
-                      }}
-                      className={`flex w-full cursor-pointer flex-col rounded-xl border px-3 py-2 text-left transition-all duration-200 ${
-                        isSelected
-                          ? "border-macBlue/30 bg-macBlue/12"
-                          : "border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
-                          {note.title}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteNote(note.id, e)}
-                          className="flex-shrink-0 rounded-lg p-1.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-200/80 hover:text-slate-600 group-hover:opacity-100"
-                          title="删除笔记"
-                          aria-label="删除笔记"
-                        >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            strokeWidth={2}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleImportant(note.id, e)}
-                          className={`flex-shrink-0 rounded-lg p-1.5 transition-colors group-hover:opacity-100 ${
-                            note.isImportant
-                              ? "text-amber-500 opacity-100"
-                              : "text-slate-400 opacity-0 hover:bg-slate-200/80 hover:text-amber-500"
-                          }`}
-                          title={
-                            note.isImportant
-                              ? "取消重要"
-                              : "标记为重要"
-                          }
-                          aria-label={
-                            note.isImportant
-                              ? "取消重要"
-                              : "标记为重要"
-                          }
-                        >
-                          {note.isImportant ? (
-                            <svg
-                              className="h-4 w-4"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      <span className="mt-1 text-xs text-slate-500">
-                        {note.preview}
-                      </span>
-                      <div className="mt-2 flex items-center gap-1.5">
-                        {(() => {
-                          const sectionLabel = customSections.find(
-                            (s) => s.id === note.sectionId,
-                          )?.label;
-                          return sectionLabel ? (
-                            <span className="inline-block max-w-[80px] truncate rounded-md bg-macBlue/10 px-1.5 py-0.5 align-middle text-[10px] font-medium leading-4 text-macBlue">
-                              {sectionLabel}
-                            </span>
-                          ) : null;
-                        })()}
-                        <span className="text-[11px] font-medium text-slate-400">
-                          {formatUpdatedAt(note.updatedAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {!isLoading && filteredNotes.length === 0 ? (
-                <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">
-                  当前分组暂无笔记。
-                </div>
-              ) : null}
-            </div>
-          </section>
+          <NoteList
+            sectionFilteredNotes={sectionFilteredNotes}
+            onFilteredNotesChange={setFilteredNotes}
+            activeNoteId={activeNoteId}
+            onActiveNoteChange={setActiveNoteId}
+            onDeleteNote={handleDeleteNote}
+            onToggleImportant={handleToggleImportant}
+            onMoveToSection={handleMoveToSection}
+            customSections={customSections}
+            isLoading={isLoading}
+          />
 
           <section className="flex min-h-0 flex-col">
             <div className="min-h-0 flex-1">
@@ -947,44 +593,6 @@ function App() {
           </section>
         </div>
       </main>
-
-      {contextMenu && (
-        <div
-          className="fixed z-50 min-w-[160px] rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-black/10"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            迁移到分组
-          </p>
-          {customSections.map((s) => ({ id: s.id, label: s.label })).map(
-            (section) => {
-              const currentNote = notes.find((n) => n.id === contextMenu.noteId);
-              const isCurrent = currentNote?.sectionId === section.id;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  disabled={isCurrent}
-                  onClick={() => handleMoveToSection(contextMenu.noteId, section.id)}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                    isCurrent
-                      ? "cursor-default text-slate-300"
-                      : "text-slate-700 hover:bg-macBlue/10 hover:text-macBlue"
-                  }`}
-                >
-                  <span className="flex-1 truncate">{section.label}</span>
-                  {isCurrent && (
-                    <svg className="h-3.5 w-3.5 shrink-0 text-macBlue" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-              );
-            },
-          )}
-        </div>
-      )}
     </div>
   );
 }
