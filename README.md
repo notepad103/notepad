@@ -22,7 +22,7 @@
 | 构建工具 | Vite |
 | 样式方案 | Tailwind CSS 3 |
 | 富文本编辑 | Tiptap (ProseMirror) |
-| 数据存储 | SQLite (系统 `sqlite3` CLI) |
+| 数据存储 | SQLite (better-sqlite3) |
 | 打包工具 | electron-builder |
 
 ## 项目结构
@@ -49,7 +49,7 @@ notepad/
 ### 前置要求
 
 - Node.js >= 18
-- macOS（依赖系统自带的 `sqlite3` 命令行工具）
+- macOS / Windows / Linux
 
 ### 安装依赖
 

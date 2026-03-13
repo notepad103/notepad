@@ -28,6 +28,7 @@ type Note = {
   preview: string;
   body: string;
   sectionId: string;
+  isImportant: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -41,6 +42,7 @@ type NoteApi = {
     id: string;
     body?: string;
     sectionId?: string;
+    isImportant?: boolean;
     title?: string;
   }) => Promise<Note>;
   delete: (id: string) => Promise<void>;
@@ -175,6 +177,7 @@ function createFallbackApi(): NoteApi {
         preview: derivePreview(body),
         body,
         sectionId,
+        isImportant: false,
         createdAt: now,
         updatedAt: now,
       };
@@ -195,6 +198,10 @@ function createFallbackApi(): NoteApi {
       const nextSectionId = payload.sectionId?.trim()
         ? payload.sectionId.trim()
         : current.sectionId;
+      const nextIsImportant =
+        typeof payload.isImportant === "boolean"
+          ? payload.isImportant
+          : current.isImportant;
       const updated: Note = {
         ...current,
         title: payload.title?.trim()
@@ -203,6 +210,7 @@ function createFallbackApi(): NoteApi {
         body: nextBody,
         preview: derivePreview(nextBody),
         sectionId: nextSectionId,
+        isImportant: nextIsImportant,
         updatedAt: Date.now(),
       };
 
@@ -239,6 +247,11 @@ function App() {
   const [customSections, setCustomSections] = useState<CustomSection[]>([]);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const [contextMenu, setContextMenu] = useState<{
+    noteId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   useEffect(() => {
     let isDisposed = false;
@@ -310,7 +323,7 @@ function App() {
       ) {
         counts.today += 1;
       }
-      if (note.sectionId === "important") counts.important += 1;
+      if (note.isImportant) counts.important += 1;
       if (note.sectionId in counts && note.sectionId !== "all" && note.sectionId !== "today" && note.sectionId !== "important") {
         counts[note.sectionId] += 1;
       }
@@ -331,6 +344,8 @@ function App() {
           d.getDate() === now.getDate()
         );
       });
+    } else if (activeSectionId === "important") {
+      list = list.filter((note) => note.isImportant);
     } else if (activeSectionId !== "all") {
       list = list.filter((note) => note.sectionId === activeSectionId);
     }
@@ -507,20 +522,56 @@ function App() {
     }
   };
 
-  const handleToggleImportant = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const note = notes.find((n) => n.id === id);
-    if (!note) return;
-    const nextSectionId = note.sectionId === "important" ? "all" : "important";
+  const handleMoveToSection = async (noteId: string, targetSectionId: string) => {
     try {
       const updated = await noteApiRef.current.update({
-        id,
-        sectionId: nextSectionId,
+        id: noteId,
+        sectionId: targetSectionId,
       });
       setNotes((current) =>
         sortByCreatedAt(
           current.map((n) =>
-            n.id === id ? { ...n, ...updated, sectionId: nextSectionId } : n,
+            n.id === noteId ? { ...n, ...updated, sectionId: targetSectionId } : n,
+          ),
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+    }
+    setContextMenu(null);
+  };
+
+  const handleNoteContextMenu = (noteId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ noteId, x: e.clientX, y: e.clientY });
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+    };
+  }, [contextMenu]);
+
+  const handleToggleImportant = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const note = notes.find((n) => n.id === id);
+    if (!note) return;
+    const nextImportant = !note.isImportant;
+    try {
+      const updated = await noteApiRef.current.update({
+        id,
+        isImportant: nextImportant,
+      });
+      setNotes((current) =>
+        sortByCreatedAt(
+          current.map((n) =>
+            n.id === id ? { ...n, ...updated, isImportant: nextImportant } : n,
           ),
         ),
       );
@@ -629,15 +680,6 @@ function App() {
                   <span className="min-w-0 flex-1 truncate">{section.label}</span>
                   <div className="flex items-center gap-1">
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
-                        isActive
-                          ? "bg-white/30 text-white"
-                          : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
-                      }`}
-                    >
-                      {sectionCounts[section.id] ?? 0}
-                    </span>
-                    <span
                       role="button"
                       tabIndex={0}
                       onClick={(e) => handleDeleteSection(section.id, e)}
@@ -651,6 +693,15 @@ function App() {
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 6L6 18M6 6l12 12" />
                       </svg>
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold transition-colors ${
+                        isActive
+                          ? "bg-white/30 text-white"
+                          : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
+                      }`}
+                    >
+                      {sectionCounts[section.id] ?? 0}
                     </span>
                   </div>
                 </button>
@@ -718,19 +769,19 @@ function App() {
                 onClick={(e) => handleToggleImportant(activeNoteId, e)}
                 className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
                   filteredNotes.find((note) => note.id === activeNoteId)
-                    ?.sectionId === "important"
+                    ?.isImportant
                     ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
                 title={
                   filteredNotes.find((note) => note.id === activeNoteId)
-                    ?.sectionId === "important"
+                    ?.isImportant
                     ? "取消重要"
                     : "标记为重要"
                 }
               >
                 {filteredNotes.find((note) => note.id === activeNoteId)
-                  ?.sectionId === "important"
+                  ?.isImportant
                   ? "取消重要"
                   : "标记为重要"}
               </button>
@@ -767,6 +818,7 @@ function App() {
                   <div
                     key={note.id}
                     className="relative group"
+                    onContextMenu={(e) => handleNoteContextMenu(note.id, e)}
                   >
                     <div
                       role="button"
@@ -809,22 +861,22 @@ function App() {
                           type="button"
                           onClick={(e) => handleToggleImportant(note.id, e)}
                           className={`flex-shrink-0 rounded-lg p-1.5 transition-colors group-hover:opacity-100 ${
-                            note.sectionId === "important"
+                            note.isImportant
                               ? "text-amber-500 opacity-100"
                               : "text-slate-400 opacity-0 hover:bg-slate-200/80 hover:text-amber-500"
                           }`}
                           title={
-                            note.sectionId === "important"
+                            note.isImportant
                               ? "取消重要"
                               : "标记为重要"
                           }
                           aria-label={
-                            note.sectionId === "important"
+                            note.isImportant
                               ? "取消重要"
                               : "标记为重要"
                           }
                         >
-                          {note.sectionId === "important" ? (
+                          {note.isImportant ? (
                             <svg
                               className="h-4 w-4"
                               fill="currentColor"
@@ -852,9 +904,21 @@ function App() {
                       <span className="mt-1 text-xs text-slate-500">
                         {note.preview}
                       </span>
-                      <span className="mt-2 text-[11px] font-medium text-slate-400">
-                        {formatUpdatedAt(note.updatedAt)}
-                      </span>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        {(() => {
+                          const sectionLabel = customSections.find(
+                            (s) => s.id === note.sectionId,
+                          )?.label;
+                          return sectionLabel ? (
+                            <span className="inline-block max-w-[80px] truncate rounded-md bg-macBlue/10 px-1.5 py-0.5 align-middle text-[10px] font-medium leading-4 text-macBlue">
+                              {sectionLabel}
+                            </span>
+                          ) : null;
+                        })()}
+                        <span className="text-[11px] font-medium text-slate-400">
+                          {formatUpdatedAt(note.updatedAt)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -883,6 +947,44 @@ function App() {
           </section>
         </div>
       </main>
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[160px] rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-black/10"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            迁移到分组
+          </p>
+          {customSections.map((s) => ({ id: s.id, label: s.label })).map(
+            (section) => {
+              const currentNote = notes.find((n) => n.id === contextMenu.noteId);
+              const isCurrent = currentNote?.sectionId === section.id;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  disabled={isCurrent}
+                  onClick={() => handleMoveToSection(contextMenu.noteId, section.id)}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                    isCurrent
+                      ? "cursor-default text-slate-300"
+                      : "text-slate-700 hover:bg-macBlue/10 hover:text-macBlue"
+                  }`}
+                >
+                  <span className="flex-1 truncate">{section.label}</span>
+                  {isCurrent && (
+                    <svg className="h-3.5 w-3.5 shrink-0 text-macBlue" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              );
+            },
+          )}
+        </div>
+      )}
     </div>
   );
 }
