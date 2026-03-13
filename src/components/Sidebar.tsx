@@ -1,8 +1,21 @@
-type CustomSection = {
+import { useEffect, useState } from "react";
+
+export type CustomSection = {
   id: string;
   label: string;
   sortOrder: number;
   createdAt: number;
+};
+
+type SectionApi = {
+  list: () => Promise<CustomSection[]>;
+  create: (payload: { label: string }) => Promise<CustomSection>;
+  update: (payload: {
+    id: string;
+    label?: string;
+    sortOrder?: number;
+  }) => Promise<CustomSection>;
+  delete: (id: string) => Promise<void>;
 };
 
 type Section = {
@@ -21,14 +34,9 @@ type SidebarProps = {
   activeSectionId: string;
   onActiveSectionChange: (id: string) => void;
   sectionCounts: Record<string, number>;
-  customSections: CustomSection[];
-  editingSectionId: string | null;
-  editingLabel: string;
-  onEditingSectionIdChange: (id: string | null) => void;
-  onEditingLabelChange: (label: string) => void;
-  onAddSection: () => void;
-  onRenameSection: (id: string) => void;
-  onDeleteSection: (id: string, e: React.MouseEvent) => void;
+  sectionApi: SectionApi;
+  onCustomSectionsChange: (sections: CustomSection[]) => void;
+  onSectionDeleted?: (id: string) => void;
   saveHint: string;
   storagePath: string;
 };
@@ -37,17 +45,74 @@ export function Sidebar({
   activeSectionId,
   onActiveSectionChange,
   sectionCounts,
-  customSections,
-  editingSectionId,
-  editingLabel,
-  onEditingSectionIdChange,
-  onEditingLabelChange,
-  onAddSection,
-  onRenameSection,
-  onDeleteSection,
+  sectionApi,
+  onCustomSectionsChange,
+  onSectionDeleted,
   saveHint,
   storagePath,
 }: SidebarProps) {
+  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
+
+  useEffect(() => {
+    let isDisposed = false;
+    sectionApi.list().then((list) => {
+      if (!isDisposed) setCustomSections(list);
+    });
+    return () => {
+      isDisposed = true;
+    };
+  }, [sectionApi]);
+
+  useEffect(() => {
+    onCustomSectionsChange(customSections);
+  }, [customSections]);
+
+  const handleAddSection = async () => {
+    try {
+      const created = await sectionApi.create({ label: "新分类" });
+      setCustomSections((prev) => [...prev, created]);
+      setEditingSectionId(created.id);
+      setEditingLabel(created.label);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleRenameSection = async (id: string) => {
+    const label = editingLabel.trim();
+    if (!label) {
+      setEditingSectionId(null);
+      return;
+    }
+    try {
+      const updated = await sectionApi.update({ id, label });
+      setCustomSections((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, label: updated.label } : s)),
+      );
+    } catch (error) {
+      console.error(error);
+    }
+    setEditingSectionId(null);
+  };
+
+  const handleDeleteSection = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (
+      !window.confirm(
+        "删除分类后，该分类下的笔记将移至「全部笔记」，确定删除？",
+      )
+    )
+      return;
+    try {
+      await sectionApi.delete(id);
+      setCustomSections((prev) => prev.filter((s) => s.id !== id));
+      onSectionDeleted?.(id);
+    } catch (error) {
+      console.error(error);
+    }
+  };
   return (
     <aside className="glass-sidebar window-no-drag absolute bottom-[6px] left-[6px] top-[6px] z-20 flex w-[278px] flex-col rounded-[28px] bg-gray-50/90 p-3">
       <header className="window-drag-region mb-4 rounded-2xl px-2 pb-3 pt-8">
@@ -93,7 +158,7 @@ export function Sidebar({
           </span>
           <button
             type="button"
-            onClick={onAddSection}
+            onClick={handleAddSection}
             className="window-no-drag rounded-md p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
             title="新建分类"
           >
@@ -114,11 +179,11 @@ export function Sidebar({
                     type="text"
                     autoFocus
                     value={editingLabel}
-                    onChange={(e) => onEditingLabelChange(e.target.value)}
-                    onBlur={() => onRenameSection(section.id)}
+                    onChange={(e) => setEditingLabel(e.target.value)}
+                    onBlur={() => handleRenameSection(section.id)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") onRenameSection(section.id);
-                      if (e.key === "Escape") onEditingSectionIdChange(null);
+                      if (e.key === "Enter") handleRenameSection(section.id);
+                      if (e.key === "Escape") setEditingSectionId(null);
                     }}
                     className="w-full rounded-xl border border-macBlue/40 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none ring-2 ring-macBlue/20"
                   />
@@ -132,8 +197,8 @@ export function Sidebar({
                 type="button"
                 onClick={() => onActiveSectionChange(section.id)}
                 onDoubleClick={() => {
-                  onEditingSectionIdChange(section.id);
-                  onEditingLabelChange(section.label);
+                  setEditingSectionId(section.id);
+                  setEditingLabel(section.label);
                 }}
                 className={`group flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium transition-all duration-200 ${
                   isActive
@@ -146,7 +211,7 @@ export function Sidebar({
                   <span
                     role="button"
                     tabIndex={0}
-                    onClick={(e) => onDeleteSection(section.id, e)}
+                    onClick={(e) => handleDeleteSection(section.id, e)}
                     className={`rounded-md p-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${
                       isActive
                         ? "text-white/70 hover:text-white"

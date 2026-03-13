@@ -189,16 +189,8 @@ export function NoteList({
                         ? "text-amber-500 opacity-100"
                         : "text-slate-400 opacity-0 hover:bg-slate-200/80 hover:text-amber-500"
                     }`}
-                    title={
-                      note.isImportant
-                        ? "取消重要"
-                        : "标记为重要"
-                    }
-                    aria-label={
-                      note.isImportant
-                        ? "取消重要"
-                        : "标记为重要"
-                    }
+                    title={note.isImportant ? "取消重要" : "标记为重要"}
+                    aria-label={note.isImportant ? "取消重要" : "标记为重要"}
                   >
                     {note.isImportant ? (
                       <svg
@@ -228,7 +220,10 @@ export function NoteList({
                 <span className="mt-1 text-xs text-slate-500">
                   {note.preview}
                 </span>
-                <div className="mt-2 flex items-center gap-1.5">
+                <div className="mt-2 flex items-center justify-between gap-1.5">
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {formatUpdatedAt(note.updatedAt)}
+                  </span>
                   {(() => {
                     const sectionLabel = customSections.find(
                       (s) => s.id === note.sectionId,
@@ -239,9 +234,6 @@ export function NoteList({
                       </span>
                     ) : null;
                   })()}
-                  <span className="text-[11px] font-medium text-slate-400">
-                    {formatUpdatedAt(note.updatedAt)}
-                  </span>
                 </div>
               </div>
             </div>
@@ -263,8 +255,9 @@ export function NoteList({
           <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
             迁移到分组
           </p>
-          {customSections.map((s) => ({ id: s.id, label: s.label })).map(
-            (section) => {
+          {customSections
+            .map((s) => ({ id: s.id, label: s.label }))
+            .map((section) => {
               const currentNote = filteredNotes.find(
                 (n) => n.id === contextMenu.noteId,
               );
@@ -302,8 +295,7 @@ export function NoteList({
                   )}
                 </button>
               );
-            },
-          )}
+            })}
         </div>
       )}
     </section>

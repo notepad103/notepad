@@ -1,15 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NoteList } from "./components/NoteList";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar, type CustomSection } from "./components/Sidebar";
 import { TiptapEditor } from "./components/TiptapEditor";
 import { normalizeBodyHtml, stripHtmlText } from "./utils/html";
-
-type CustomSection = {
-  id: string;
-  label: string;
-  sortOrder: number;
-  createdAt: number;
-};
 
 type SectionApi = {
   list: () => Promise<CustomSection[]>;
@@ -197,17 +190,14 @@ function App() {
   const [storagePath, setStoragePath] = useState("读取中...");
   const [customSections, setCustomSections] = useState<CustomSection[]>([]);
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
-  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
-  const [editingLabel, setEditingLabel] = useState("");
   useEffect(() => {
     let isDisposed = false;
 
     const loadNotes = async () => {
       try {
-        const [initialNotes, path, initialSections] = await Promise.all([
+        const [initialNotes, path] = await Promise.all([
           noteApiRef.current.list(),
           noteApiRef.current.storagePath(),
-          sectionApiRef.current.list(),
         ]);
 
         if (isDisposed) {
@@ -224,7 +214,6 @@ function App() {
         setNotes(normalized);
         setActiveNoteId(normalized[0]?.id ?? null);
         setStoragePath(path);
-        setCustomSections(initialSections);
       } catch (error) {
         if (!isDisposed) {
           console.error(error);
@@ -418,47 +407,11 @@ function App() {
     }
   };
 
-  const handleAddSection = async () => {
-    try {
-      const created = await sectionApiRef.current.create({ label: "新分类" });
-      setCustomSections((prev) => [...prev, created]);
-      setEditingSectionId(created.id);
-      setEditingLabel(created.label);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleRenameSection = async (id: string) => {
-    const label = editingLabel.trim();
-    if (!label) {
-      setEditingSectionId(null);
-      return;
-    }
-    try {
-      const updated = await sectionApiRef.current.update({ id, label });
-      setCustomSections((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, label: updated.label } : s)),
-      );
-    } catch (error) {
-      console.error(error);
-    }
-    setEditingSectionId(null);
-  };
-
-  const handleDeleteSection = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm("删除分类后，该分类下的笔记将移至「全部笔记」，确定删除？")) return;
-    try {
-      await sectionApiRef.current.delete(id);
-      setCustomSections((prev) => prev.filter((s) => s.id !== id));
-      setNotes((prev) =>
-        prev.map((n) => (n.sectionId === id ? { ...n, sectionId: "all" } : n)),
-      );
-      if (activeSectionId === id) setActiveSectionId("all");
-    } catch (error) {
-      console.error(error);
-    }
+  const handleSectionDeleted = (id: string) => {
+    setNotes((prev) =>
+      prev.map((n) => (n.sectionId === id ? { ...n, sectionId: "all" } : n)),
+    );
+    setActiveSectionId((current) => (current === id ? "all" : current));
   };
 
   const handleMoveToSection = async (noteId: string, targetSectionId: string) => {
@@ -510,14 +463,9 @@ function App() {
         activeSectionId={activeSectionId}
         onActiveSectionChange={setActiveSectionId}
         sectionCounts={sectionCounts}
-        customSections={customSections}
-        editingSectionId={editingSectionId}
-        editingLabel={editingLabel}
-        onEditingSectionIdChange={setEditingSectionId}
-        onEditingLabelChange={setEditingLabel}
-        onAddSection={handleAddSection}
-        onRenameSection={handleRenameSection}
-        onDeleteSection={handleDeleteSection}
+        sectionApi={sectionApiRef.current}
+        onCustomSectionsChange={setCustomSections}
+        onSectionDeleted={handleSectionDeleted}
         saveHint={saveHint}
         storagePath={storagePath}
       />
