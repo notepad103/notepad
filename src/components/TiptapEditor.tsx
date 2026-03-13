@@ -57,7 +57,7 @@ export function TiptapEditor({
     editorProps: {
       attributes: {
         class:
-          "wysiwyg-editor rounded-[28px] h-full w-full min-h-[200px] rounded-2xl bg-white p-5 text-[15px] leading-7 text-slate-800 outline-none transition-colors focus:ring-2 focus:ring-macBlue/35 prose prose-sm max-w-none",
+          "wysiwyg-editor rounded-[28px] h-full w-full min-h-[200px] rounded-2xl bg-white p-5 text-[15px] leading-7 text-slate-800 outline-none transition-colors focus:ring-2 focus:ring-slate-300 prose prose-sm max-w-none",
       },
     },
   });
