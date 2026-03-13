@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --sidebar-bg-light: rgba(255, 255, 255, 0.65);
+  --sidebar-glass-border: rgba(255, 255, 255, 0.6);
+  --sidebar-glass-border-subtle: rgba(255, 255, 255, 0.25);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  background-color: transparent !important;
+  user-select: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, '.AppleSystemUIFont', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+}
+
+.glass-sidebar {
+  /* background: var(--sidebar-bg-light); */
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--sidebar-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--sidebar-glass-border-subtle),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.1),
+    0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.window-drag-region {
+  -webkit-app-region: drag;
+}
+
+.window-no-drag,
+.window-no-drag * {
+  -webkit-app-region: no-drag;
+}
+
+/* 在 no-drag 容器内的拖拽区域仍可拖动窗口 */
+.window-no-drag .window-drag-region {
+  -webkit-app-region: drag;
+}
+
+.wysiwyg-editor {
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.wysiwyg-editor:focus {
+  outline: none;
+}
+
+.wysiwyg-editor[data-empty='true']::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184 / 0.9);
+  pointer-events: none;
+}
+
+.wysiwyg-editor p,
+.wysiwyg-editor h1,
+.wysiwyg-editor h2,
+.wysiwyg-editor h3,
+.wysiwyg-editor blockquote,
+.wysiwyg-editor ul,
+.wysiwyg-editor hr {
+  margin: 0.25rem 0;
+}
+
+.wysiwyg-editor hr {
+  border: none;
+  border-top: 1px solid rgb(148 163 184 / 0.5);
+}
+
+.wysiwyg-editor h1 {
+  font-size: 1.85rem;
+  line-height: 1.28;
+  font-weight: 700;
+}
+
+.wysiwyg-editor h2 {
+  font-size: 1.5rem;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.wysiwyg-editor h3 {
+  font-size: 1.25rem;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.wysiwyg-editor blockquote {
+  border-left: 3px solid rgb(148 163 184 / 0.6);
+  padding-left: 0.75rem;
+  color: rgb(71 85 105);
+}
+
+.wysiwyg-editor ul {
+  padding-left: 1.3rem;
+  list-style: disc;
+}
+
+.wysiwyg-editor code {
+  border-radius: 0.35rem;
+  background: rgb(148 163 184 / 0.22);
+  padding: 0.08rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.wysiwyg-editor img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.5rem 0;
+  border-radius: 0.5rem;
+}
+
+/* 笔记列表滚动条样式（细条 2px，深色更易见） */
+.notes-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(100 116 139) transparent;
+}
+/* 提高特异性并加 !important，避免被 Tailwind 或浏览器默认覆盖 */
+section .notes-list-scroll::-webkit-scrollbar {
+  width: 2px !important;
+  height: 2px !important;
+}
+section .notes-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+section .notes-list-scroll::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139);
+  border-radius: 1px;
+}
+section .notes-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(71 85 105);
+}
+
