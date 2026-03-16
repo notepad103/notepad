@@ -64,9 +64,19 @@ function createMainWindow() {
     }
   });
 
+  // 禁止 Cmd+Option+I 打开开发者工具
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key.toLowerCase() === 'i' && input.meta && input.alt) {
+      event.preventDefault();
+    }
+  });
+
   if (isDev) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // 页面加载完成后再打开 DevTools；每次刷新后重新打开，避免「连接已断开」
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    });
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }

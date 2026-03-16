@@ -102,6 +102,12 @@ function createNote(payload = {}) {
     typeof safePayload.sectionId === 'string' && safePayload.sectionId.trim()
       ? safePayload.sectionId.trim()
       : 'all';
+  const isImportant =
+    typeof safePayload.isImportant === 'boolean'
+      ? (safePayload.isImportant ? 1 : 0)
+      : sectionId === 'important'
+        ? 1
+        : 0;
   const body = '<p><br></p>';
   const title = '新建笔记';
   const preview = derivePreview(body);
@@ -109,9 +115,9 @@ function createNote(payload = {}) {
   const noteId = `note-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
   db.prepare(`
-    INSERT INTO notes (id, title, preview, body, section_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(noteId, title, preview, body, sectionId, now, now);
+    INSERT INTO notes (id, title, preview, body, section_id, is_important, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(noteId, title, preview, body, sectionId, isImportant, now, now);
 
   const created = getNoteById(noteId);
   if (!created) throw new Error('创建笔记后未读取到结果。');

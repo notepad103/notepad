@@ -27,7 +27,7 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 type NoteApi = {
   list: () => Promise<Note[]>;
-  create: (payload?: { sectionId?: string }) => Promise<Note>;
+  create: (payload?: { sectionId?: string; isImportant?: boolean }) => Promise<Note>;
   update: (payload: {
     id: string;
     body?: string;
@@ -115,6 +115,10 @@ function createFallbackApi(): NoteApi {
       const sectionId = payload?.sectionId?.trim()
         ? payload.sectionId.trim()
         : "all";
+      const isImportant =
+        typeof payload?.isImportant === "boolean"
+          ? payload.isImportant
+          : sectionId === "important";
       const body = "<p><br></p>";
       const now = Date.now();
       const note: Note = {
@@ -123,7 +127,7 @@ function createFallbackApi(): NoteApi {
         preview: derivePreview(body),
         body,
         sectionId,
-        isImportant: false,
+        isImportant,
         createdAt: now,
         updatedAt: now,
       };
@@ -382,7 +386,8 @@ function App() {
   const handleCreateNote = async () => {
     try {
       const sectionId = activeSectionId === "all" ? "all" : activeSectionId;
-      const created = await noteApiRef.current.create({ sectionId });
+      const isImportant = activeSectionId === "important";
+      const created = await noteApiRef.current.create({ sectionId, isImportant });
       const normalized = { ...created, body: normalizeBodyHtml(created.body) };
 
       setNotes((currentNotes) =>

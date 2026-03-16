@@ -13,7 +13,7 @@ type NotepadNote = {
 
 type NotepadNoteApi = {
   list: () => Promise<NotepadNote[]>;
-  create: (payload?: { sectionId?: string }) => Promise<NotepadNote>;
+  create: (payload?: { sectionId?: string; isImportant?: boolean }) => Promise<NotepadNote>;
   update: (payload: { id: string; body?: string; title?: string; sectionId?: string; isImportant?: boolean }) => Promise<NotepadNote>;
   delete: (id: string) => Promise<void>;
   storagePath: () => Promise<string>;
