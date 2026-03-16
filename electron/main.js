@@ -64,12 +64,12 @@ function createMainWindow() {
     }
   });
 
-  // 禁止 Cmd+Option+I 打开开发者工具
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.key.toLowerCase() === 'i' && input.meta && input.alt) {
-      event.preventDefault();
-    }
-  });
+  // 生产环境禁止打开开发者工具：一旦被打开（快捷键/菜单等）立即关闭
+  if (!isDev) {
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow.webContents.closeDevTools();
+    });
+  }
 
   if (isDev) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
