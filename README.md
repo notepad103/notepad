@@ -5,8 +5,9 @@
 - **仓库**：<https://github.com/notepad103/notepad>  
 - **克隆**：`git clone git@github.com:notepad103/notepad.git`
 
-<!-- 在这里添加你的应用截图 -->
-<!-- ![截图](./screenshot.png) -->
+## 界面预览
+
+![应用界面](./docs/ui.png)
 
 ## 功能特性
 
@@ -55,7 +56,8 @@ notepad/
 ### 前置要求
 
 - Node.js >= 18
-- macOS / Windows / Linux
+- **macOS（当前仅保证在 macOS 上可用）**
+- Windows / Linux：暂未做兼容（欢迎 PR）
 
 ### 安装依赖
 
