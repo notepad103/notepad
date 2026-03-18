@@ -2,6 +2,9 @@
 
 一款面向 macOS 的轻量级本地笔记应用，使用 Electron + React + Tailwind CSS 构建，数据通过 SQLite 持久化存储在本地。
 
+- **仓库**：<https://github.com/notepad103/notepad>  
+- **克隆**：`git clone git@github.com:notepad103/notepad.git`
+
 <!-- 在这里添加你的应用截图 -->
 <!-- ![截图](./screenshot.png) -->
 
@@ -58,12 +61,16 @@ notepad/
 
 ```bash
 npm install
+# 或
+yarn
 ```
 
 ### 开发模式
 
 ```bash
 npm run dev
+# 或
+yarn dev
 ```
 
 同时启动 Vite 开发服务器和 Electron 窗口，支持热更新。
@@ -72,20 +79,20 @@ npm run dev
 
 ```bash
 # 仅构建前端资源
-npm run build
+npm run build   # 或 yarn build
 
 # 快速打包（生成目录，用于测试）
-npm run pack
+npm run pack    # 或 yarn pack
 
 # 完整打包（生成 .dmg / .zip 安装包）
-npm run dist
+npm run dist    # 或 yarn dist
 ```
 
 输出目录为 `release/`。
 
 ## 参与贡献
 
-欢迎贡献代码！请随时提交 [Issue](https://github.com/notepad103/notepad/issues) 或 Pull Request。
+欢迎贡献代码！请随时提交 [Issue](https://github.com/notepad103/notepad/issues) 或 [Pull Request](https://github.com/notepad103/notepad/pulls)。
 
 ## 许可证
 
