@@ -76,7 +76,10 @@ export function TiptapEditor({
     }
 
     // 即使 key 不变，如果外部 value 变了且和编辑器内容不一致，也同步一次
-    if (lastValueRef.current !== normalized && editor.getHTML() !== normalized) {
+    if (
+      lastValueRef.current !== normalized &&
+      editor.getHTML() !== normalized
+    ) {
       lastValueRef.current = normalized;
       editor.commands.setContent(normalized, false);
     }
@@ -108,7 +111,9 @@ export function TiptapEditor({
           disabled ? "cursor-not-allowed opacity-60" : ""
         }`}
       >
-        <p><br /></p>
+        <p>
+          <br />
+        </p>
       </div>
     );
   }

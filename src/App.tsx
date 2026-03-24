@@ -303,9 +303,14 @@ function App() {
 
   // 当筛选结果变化（切换分类/搜索）时，默认选中并展示第一条
   useEffect(() => {
-    const firstId = filteredNotes[0]?.id ?? null;
-    setActiveNoteId(firstId);
-  }, [filteredNotes]);
+    const hasActive = activeNoteId
+      ? filteredNotes.some((note) => note.id === activeNoteId)
+      : false;
+    if (!hasActive) {
+      const firstId = filteredNotes[0]?.id ?? null;
+      setActiveNoteId(firstId);
+    }
+  }, [filteredNotes, activeNoteId]);
 
   useEffect(() => {
     const currentNote =
